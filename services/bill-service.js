@@ -97,28 +97,29 @@ const BillService = {
       );
 
       const existingBillBalance = await pool.query(
-        `SELECT id FROM bill_balance WHERE bill_id = $1 AND customer_id = $2`,
-        [bill_id, finalCustomerId]
+        `SELECT id FROM bill_balance WHERE bill_id = $1 AND customer_id = $2 AND company_id = $3`,
+        [bill_id, finalCustomerId, payload.company_id]
       );
 
       if (existingBillBalance.rows.length > 0) {
         const updateQuery = `
           UPDATE bill_balance 
           SET balance = $1, updated_at = CURRENT_TIMESTAMP 
-          WHERE bill_id = $2 AND customer_id = $3
+          WHERE bill_id = $2 AND customer_id = $3 AND company_id = $4
         `;
         await pool.query(updateQuery, [
           payload.balance,
           bill_id,
           finalCustomerId,
+          payload.company_id
         ]);
       } else {
         await pool.query(
           `INSERT INTO bill_balance
-             (bill_id, customer_id, balance)
-             VALUES ($1, $2, $3)
+             (bill_id, customer_id, balance, company_id)
+             VALUES ($1, $2, $3, $4)
             `,
-          [bill_id, finalCustomerId, payload.balance]
+          [bill_id, finalCustomerId, payload.balance, payload.company_id]
         );
       }
 
@@ -126,6 +127,60 @@ const BillService = {
       return { status: 201, data: bill_id };
     } catch (error) {
       await client.query("ROLLBACK");
+      if (!error.statusCode) {
+        error.statusCode = 500;
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  setBillPayLine: async (payload) => {
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const bill_payment_history = await pool.query(
+        `
+          INSERT INTO bill_payment_history 
+          (bill_id, customer_id, payment_amount, balance, remarks) VALUES
+          ($1, $2, $3, $4, $5)
+          RETURNING id
+          `,
+        [
+          payload.bill_id,
+          payload.customer_id,
+          payload.payment_amount,
+          payload.balance,
+          payload.remarks,
+        ]
+      );
+
+      if (bill_payment_history.rows.length === 0) {
+        throw new Error("Failed to insert bill payment history");
+      }
+
+      const bill_balance = await pool.query(
+        `
+         UPDATE bill_balance 
+          SET balance = $1, updated_at = CURRENT_TIMESTAMP 
+          WHERE bill_id = $2 AND customer_id = $3
+        `,
+        [payload.balance, payload.bill_id, payload.customer_id]
+      );
+
+      if (bill_balance.rowCount === 0) {
+        throw new Error("Failed to update bill balance");
+      }
+
+      await client.query("COMMIT");
+
+      return { status: 201, message: "success" };
+    } catch (error) {
+      await client.query("ROLLBACK");
+
       if (!error.statusCode) {
         error.statusCode = 500;
       }
@@ -171,9 +226,6 @@ const BillService = {
     from_date,
     to_date
   ) => {
-    console.log("customer_id", customer_id);
-    console.log("from", from_date);
-    console.log("to", to_date);
     try {
       let query = `
       SELECT 
@@ -214,8 +266,6 @@ const BillService = {
 
       query += ` ORDER BY bill.created_at DESC`;
 
-      console.log("query==>", query);
-
       const result = await pool.query(query, values);
       return result;
     } catch (error) {
@@ -254,6 +304,24 @@ const BillService = {
       throw error;
     }
   },
+
+  getAllBillBalance: async (company_id) => {
+    try {
+      const query = `
+       SELECT SUM(balance) AS total_balance
+       FROM bill_balance WHERE company_id = $1;
+      `;
+      const value = [company_id];
+      const result = await pool.query(query, value);
+      return result;
+    } catch (error) {
+      if (!error.statusCode) {
+        error.statusCode = 500;
+      }
+      throw error;
+    }
+  },
+
 };
 
 module.exports = BillService;

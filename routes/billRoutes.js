@@ -7,8 +7,6 @@ router.all("/init", async (req, res) => {
   const { service, bill_id, customer_id, company_id, from_date, to_date } =
     req.query;
 
-  console.log("here ", customer_id);
-
   switch (req.method) {
     case "POST":
       if (servicename == "SETBILL") {
@@ -22,6 +20,19 @@ router.all("/init", async (req, res) => {
           res.status(statusCode).json({ message });
         }
       }
+
+      if (servicename == "SETBILLPAYLINE") {
+        try {
+          const response = await BillService.setBillPayLine(payload);
+          res.status(201).json(response);
+        } catch (error) {
+          console.error(error);
+          const statusCode = error.statusCode || 500;
+          const message = error.message || "Internal server error";
+          res.status(statusCode).json({ message });
+        }
+      }
+
       break;
 
     case "GET":
@@ -83,6 +94,19 @@ router.all("/init", async (req, res) => {
           res.status(statusCode).json({ message });
         }
       }
+
+      if (service == "GETALLBILLBALANCE") {
+        try {
+          const response = await BillService.getAllBillBalance(company_id);
+          res.status(200).json(response);
+        } catch (error) {
+          console.error(error);
+          const statusCode = error.statusCode || 500;
+          const message = error.message || "Internal server error";
+          res.status(statusCode).json({ message });
+        }
+      }
+
       break;
 
     default:
