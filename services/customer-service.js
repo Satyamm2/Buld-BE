@@ -7,8 +7,8 @@ const CustomerService = {
           INSERT INTO customerinfo 
           (name, mobile_number, email, address, company_id) 
           VALUES 
-          ($1, $2, $3, $4, $5);
-
+          ($1, $2, $3, $4, $5)
+          RETURNING id
         `;
 
       const value = [
